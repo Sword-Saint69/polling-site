@@ -202,10 +202,10 @@ export default function HomePage() {
                     </DialogHeader>
                     <div className="space-y-4">
                       <div>
-                        <Label htmlFor="studentId">Student ID</Label>
+                        <Label htmlFor="studentId">KTU ID</Label>
                         <Input
                           id="studentId"
-                          placeholder="Enter your student ID"
+                          placeholder="Enter your KTU ID"
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
                           className="mt-1"
