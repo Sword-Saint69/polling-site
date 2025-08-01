@@ -7,8 +7,6 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Dialog,
   DialogContent,
@@ -18,33 +16,37 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Calendar, Clock, Users, Vote, BookOpen, Shield, User, Loader2 } from "lucide-react"
+import { Label } from "@/components/ui/label"
+import { Calendar, Clock, Users, Vote, BookOpen, Loader2, CheckCircle, BarChart3 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { getPolls, getPosts, submitVote, hasUserVoted, type Poll, type Post } from "@/lib/firestore"
-import { trackPollVote, trackStudentLogin } from "@/lib/analytics"
+import { getPolls, getPosts, submitVote, type Poll, type Post } from "@/lib/firestore"
+import { trackPollVote } from "@/lib/analytics"
 
 export default function HomePage() {
   const [polls, setPolls] = useState<Poll[]>([])
   const [posts, setPosts] = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [studentId, setStudentId] = useState("")
   const [selectedOption, setSelectedOption] = useState("")
   const [votingPollId, setVotingPollId] = useState("")
   const [submittingVote, setSubmittingVote] = useState(false)
-  const [userVotes, setUserVotes] = useState<Set<string>>(new Set())
+  const [votedPolls, setVotedPolls] = useState<Set<string>>(new Set())
+  const [showResults, setShowResults] = useState<Record<string, boolean>>({})
   const { toast } = useToast()
 
   useEffect(() => {
     loadData()
-  }, [])
-
-  useEffect(() => {
-    if (isLoggedIn && studentId) {
-      checkUserVotes()
+    // Load voted polls from localStorage
+    const savedVotedPolls = localStorage.getItem("votedPolls")
+    if (savedVotedPolls) {
+      setVotedPolls(new Set(JSON.parse(savedVotedPolls)))
     }
-  }, [isLoggedIn, studentId, polls])
+    // Load show results state from localStorage
+    const savedShowResults = localStorage.getItem("showResults")
+    if (savedShowResults) {
+      setShowResults(JSON.parse(savedShowResults))
+    }
+  }, [])
 
   const loadData = async () => {
     setLoading(true)
@@ -81,31 +83,6 @@ export default function HomePage() {
     }
   }
 
-  const checkUserVotes = async () => {
-    const votedPolls = new Set<string>()
-
-    for (const poll of polls) {
-      const { hasVoted } = await hasUserVoted(poll.id, studentId)
-      if (hasVoted) {
-        votedPolls.add(poll.id)
-      }
-    }
-
-    setUserVotes(votedPolls)
-  }
-
-  const handleLogin = (id: string) => {
-    if (id.trim()) {
-      setStudentId(id)
-      setIsLoggedIn(true)
-      trackStudentLogin(id)
-      toast({
-        title: "Logged in successfully",
-        description: "You can now participate in polls",
-      })
-    }
-  }
-
   const handleVote = async (pollId: string) => {
     if (!selectedOption) {
       toast({
@@ -117,7 +94,9 @@ export default function HomePage() {
 
     setSubmittingVote(true)
     try {
-      const result = await submitVote(pollId, studentId, selectedOption)
+      // Generate a random user ID for voting
+      const randomUserId = `user_${Math.random().toString(36).substr(2, 9)}`
+      const result = await submitVote(pollId, randomUserId, selectedOption)
 
       if (result.error) {
         toast({
@@ -128,9 +107,20 @@ export default function HomePage() {
       } else {
         toast({
           title: "Vote submitted successfully",
-          description: "Thank you for participating!",
+          description: "Thank you for participating! Results are now visible.",
         })
-        setUserVotes((prev) => new Set([...prev, pollId]))
+
+        // Mark poll as voted and show results
+        const newVotedPolls = new Set([...votedPolls, pollId])
+        const newShowResults = { ...showResults, [pollId]: true }
+
+        setVotedPolls(newVotedPolls)
+        setShowResults(newShowResults)
+
+        // Save to localStorage
+        localStorage.setItem("votedPolls", JSON.stringify([...newVotedPolls]))
+        localStorage.setItem("showResults", JSON.stringify(newShowResults))
+
         const poll = polls.find((p) => p.id === pollId)
         if (poll) {
           trackPollVote(pollId, poll.title)
@@ -148,6 +138,12 @@ export default function HomePage() {
       setSelectedOption("")
       setVotingPollId("")
     }
+  }
+
+  const toggleResults = (pollId: string) => {
+    const newShowResults = { ...showResults, [pollId]: !showResults[pollId] }
+    setShowResults(newShowResults)
+    localStorage.setItem("showResults", JSON.stringify(newShowResults))
   }
 
   const formatDate = (dateString: string) => {
@@ -187,47 +183,6 @@ export default function HomePage() {
 
             <div className="flex items-center space-x-4">
               <ThemeToggle />
-              {!isLoggedIn ? (
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="flex items-center space-x-2 glass-card bg-transparent">
-                      <User className="h-4 w-4" />
-                      <span>Student Login</span>
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="glass-card">
-                    <DialogHeader>
-                      <DialogTitle className="font-heading">Student Authentication</DialogTitle>
-                      <DialogDescription>Enter your student ID to participate in polls</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="studentId">KTU ID</Label>
-                        <Input
-                          id="studentId"
-                          placeholder="Enter your KTU ID"
-                          value={studentId}
-                          onChange={(e) => setStudentId(e.target.value)}
-                          className="mt-1"
-                        />
-                      </div>
-                      <Button onClick={() => handleLogin(studentId)} className="w-full">
-                        Login
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              ) : (
-                <div className="flex items-center space-x-3">
-                  <Badge variant="secondary" className="flex items-center space-x-1 glass-card">
-                    <Shield className="h-3 w-3" />
-                    <span>ID: {studentId}</span>
-                  </Badge>
-                  <Button variant="ghost" size="sm" onClick={() => setIsLoggedIn(false)}>
-                    Logout
-                  </Button>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -274,7 +229,9 @@ export default function HomePage() {
                 {polls
                   .filter((poll) => poll.isActive)
                   .map((poll) => {
-                    const hasVoted = userVotes.has(poll.id)
+                    const hasVoted = votedPolls.has(poll.id)
+                    const shouldShowResults = showResults[poll.id] || false
+
                     return (
                       <Card
                         key={poll.id}
@@ -286,9 +243,20 @@ export default function HomePage() {
                               <CardTitle className="text-lg font-heading">{poll.title}</CardTitle>
                               <CardDescription>{poll.description}</CardDescription>
                             </div>
-                            <Badge variant={poll.isActive ? "default" : "secondary"} className="shrink-0">
-                              {poll.isActive ? "Active" : "Closed"}
-                            </Badge>
+                            <div className="flex items-center space-x-2">
+                              <Badge variant={poll.isActive ? "default" : "secondary"} className="shrink-0">
+                                {poll.isActive ? "Active" : "Closed"}
+                              </Badge>
+                              {hasVoted && (
+                                <Badge
+                                  variant="outline"
+                                  className="flex items-center space-x-1 glass-card bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300"
+                                >
+                                  <CheckCircle className="h-3 w-3" />
+                                  <span>Voted</span>
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                             <div className="flex items-center space-x-1">
@@ -302,12 +270,22 @@ export default function HomePage() {
                           </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          {hasVoted ? (
+                          {shouldShowResults ? (
                             <div className="space-y-3">
-                              <p className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center space-x-1">
-                                <Shield className="h-3 w-3" />
-                                <span>You have already voted</span>
-                              </p>
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-blue-600 dark:text-blue-400 flex items-center space-x-1">
+                                  <BarChart3 className="h-3 w-3" />
+                                  <span>Poll Results</span>
+                                </p>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => toggleResults(poll.id)}
+                                  className="text-xs"
+                                >
+                                  Hide Results
+                                </Button>
+                              </div>
                               {poll.options.map((option) => {
                                 const percentage = poll.totalVotes > 0 ? (option.votes / poll.totalVotes) * 100 : 0
                                 return (
@@ -325,56 +303,78 @@ export default function HomePage() {
                             </div>
                           ) : (
                             <div className="space-y-4">
-                              {isLoggedIn ? (
-                                <Dialog>
-                                  <DialogTrigger asChild>
-                                    <Button
-                                      className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                                      onClick={() => setVotingPollId(poll.id)}
-                                    >
-                                      Vote Now
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="glass-card">
-                                    <DialogHeader>
-                                      <DialogTitle className="font-heading">{poll.title}</DialogTitle>
-                                      <DialogDescription>{poll.description}</DialogDescription>
-                                    </DialogHeader>
-                                    <div className="space-y-4">
-                                      <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
-                                        {poll.options.map((option) => (
-                                          <div
-                                            key={option.id}
-                                            className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
-                                          >
-                                            <RadioGroupItem value={option.id} id={option.id} />
-                                            <Label htmlFor={option.id} className="flex-1 cursor-pointer font-medium">
-                                              {option.text}
-                                            </Label>
-                                          </div>
-                                        ))}
-                                      </RadioGroup>
-                                      <Button
-                                        onClick={() => handleVote(poll.id)}
-                                        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
-                                        disabled={!selectedOption || submittingVote}
-                                      >
-                                        {submittingVote ? (
-                                          <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Submitting...
-                                          </>
-                                        ) : (
-                                          "Submit Vote"
-                                        )}
-                                      </Button>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
+                              {hasVoted ? (
+                                <div className="space-y-3">
+                                  <p className="text-sm font-medium text-green-600 dark:text-green-400 flex items-center space-x-1">
+                                    <CheckCircle className="h-3 w-3" />
+                                    <span>Thank you for voting!</span>
+                                  </p>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => toggleResults(poll.id)}
+                                    className="w-full glass-card bg-transparent"
+                                  >
+                                    <BarChart3 className="h-4 w-4 mr-2" />
+                                    View Results
+                                  </Button>
+                                </div>
                               ) : (
-                                <Button disabled className="w-full">
-                                  Login to Vote
-                                </Button>
+                                <>
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button
+                                        className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                                        onClick={() => setVotingPollId(poll.id)}
+                                      >
+                                        Vote Now
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="glass-card">
+                                      <DialogHeader>
+                                        <DialogTitle className="font-heading">{poll.title}</DialogTitle>
+                                        <DialogDescription>{poll.description}</DialogDescription>
+                                      </DialogHeader>
+                                      <div className="space-y-4">
+                                        <RadioGroup value={selectedOption} onValueChange={setSelectedOption}>
+                                          {poll.options.map((option) => (
+                                            <div
+                                              key={option.id}
+                                              className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent/50 transition-colors"
+                                            >
+                                              <RadioGroupItem value={option.id} id={option.id} />
+                                              <Label htmlFor={option.id} className="flex-1 cursor-pointer font-medium">
+                                                {option.text}
+                                              </Label>
+                                            </div>
+                                          ))}
+                                        </RadioGroup>
+                                        <Button
+                                          onClick={() => handleVote(poll.id)}
+                                          className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+                                          disabled={!selectedOption || submittingVote}
+                                        >
+                                          {submittingVote ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                              Submitting...
+                                            </>
+                                          ) : (
+                                            "Submit Vote"
+                                          )}
+                                        </Button>
+                                      </div>
+                                    </DialogContent>
+                                  </Dialog>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleResults(poll.id)}
+                                    className="w-full text-xs text-muted-foreground hover:text-foreground"
+                                  >
+                                    <BarChart3 className="h-3 w-3 mr-1" />
+                                    View Current Results
+                                  </Button>
+                                </>
                               )}
                             </div>
                           )}

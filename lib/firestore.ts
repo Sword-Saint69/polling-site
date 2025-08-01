@@ -6,7 +6,6 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  where,
   orderBy,
   increment,
   getDoc,
@@ -38,7 +37,7 @@ export interface Post {
 
 export interface Vote {
   pollId: string
-  studentId: string
+  userId: string
   optionId: string
   timestamp: Timestamp
 }
@@ -89,21 +88,13 @@ export const deletePoll = async (pollId: string) => {
   }
 }
 
-// Vote operations
-export const submitVote = async (pollId: string, studentId: string, optionId: string) => {
+// Vote operations (simplified without duplicate checking)
+export const submitVote = async (pollId: string, userId: string, optionId: string) => {
   try {
-    // Check if student has already voted
-    const voteQuery = query(collection(db, "votes"), where("pollId", "==", pollId), where("studentId", "==", studentId))
-    const existingVotes = await getDocs(voteQuery)
-
-    if (!existingVotes.empty) {
-      return { error: "You have already voted on this poll" }
-    }
-
-    // Add vote
+    // Add vote without checking for duplicates
     await addDoc(collection(db, "votes"), {
       pollId,
-      studentId,
+      userId,
       optionId,
       timestamp: Timestamp.now(),
     })
@@ -125,16 +116,6 @@ export const submitVote = async (pollId: string, studentId: string, optionId: st
     return { error: null }
   } catch (error: any) {
     return { error: error.message }
-  }
-}
-
-export const hasUserVoted = async (pollId: string, studentId: string) => {
-  try {
-    const voteQuery = query(collection(db, "votes"), where("pollId", "==", pollId), where("studentId", "==", studentId))
-    const querySnapshot = await getDocs(voteQuery)
-    return { hasVoted: !querySnapshot.empty, error: null }
-  } catch (error: any) {
-    return { hasVoted: false, error: error.message }
   }
 }
 

@@ -22,7 +22,7 @@ export const metadata: Metadata = {
   title: "CEMP VOICE - Student Polling Platform",
   description: "Professional polling and content management platform for CEMP students",
   keywords: "CEMP, student polls, voting, campus voice, student engagement",
-    generator: ''
+    generator: 'v0.dev'
 }
 
 export default function RootLayout({

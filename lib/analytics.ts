@@ -28,12 +28,6 @@ export const trackPostCreate = (postTitle: string, category: string) => {
   })
 }
 
-export const trackStudentLogin = (studentId: string) => {
-  trackEvent("student_login", {
-    student_id: studentId,
-  })
-}
-
 export const trackAdminLogin = (adminEmail: string) => {
   trackEvent("admin_login", {
     admin_email: adminEmail,
